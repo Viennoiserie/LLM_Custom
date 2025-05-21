@@ -67,7 +67,7 @@ def clean_book(text):
 
     return text.strip()
 
-def download_and_clean_book(url, name):
+def download_book(url, name):
 
     try:
         response = requests.get(url)
@@ -94,9 +94,10 @@ for level, books in BOOKS.items():
         
         print(f"Downloading {name} for level: {level}...")
 
-        cleaned = download_and_clean_book(url, name)
+        cleaned = download_book(url, name)
 
         if cleaned:
+            
             combined += f"\n\n### START OF {name.upper()} ###\n\n"
             combined += cleaned
             combined += f"\n\n### END OF {name.upper()} ###\n\n"
@@ -106,5 +107,3 @@ for level, books in BOOKS.items():
 
     with open(f"data/{level}.txt", "w", encoding="utf-8") as f:
         f.write(combined)
-
-    print(f"> Saved data/{level}.txt ({len(combined) // 1024} KB)\n")
