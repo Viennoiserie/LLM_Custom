@@ -8,7 +8,7 @@ This repository implements a full pipeline for training and using a transformer-
 ## 📁 Project Structure
 
 - **`data_preprocessing.py`**  
-  Downloads and cleans public domain texts from Project Gutenberg, organizing them by difficulty level (`grammar`, `simple`, `intermediate`, `complex`).
+  Downloads and cleans public domain texts from Project Gutenberg, organizing them by difficulty level (`grammar`, `simple`, `intermediate`, `complex`, `dialogue`).
 
 - **`training.ipynb`**  
   Handles:
