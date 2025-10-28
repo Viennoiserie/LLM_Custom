@@ -2,17 +2,17 @@ import os
 import re
 import requests
 
-os.makedirs("data", exist_ok=True)
+os.makedirs("./Data", exist_ok=True)
 
 BOOKS = {
 
-    "grammar": {     "english_grammar": "https://www.gutenberg.org/files/37134/37134-0.txt",  
+    "grammar": {     "english_grammar_stewart": "https://www.gutenberg.org/files/76768/76768-0.txt",  
                      "how_to_speak_write": "https://www.gutenberg.org/files/64078/64078-0.txt",  
                      "kirkham_lectures": "https://www.gutenberg.org/files/14070/14070-0.txt",  
                      "goold_brown_grammar": "https://www.gutenberg.org/files/11615/11615-0.txt", 
                      "baskervill_sewell": "https://www.gutenberg.org/files/14006/14006-0.txt"},
 
-    "simple": {      "aesop_fables": "https://www.gutenberg.org/files/19994/19994-0.txt",
+    "simple": {      "aesop_fables": "https://www.gutenberg.org/files/21/21-0.txt",
                      "alice": "https://www.gutenberg.org/files/11/11-0.txt",
                      "peter_pan": "https://www.gutenberg.org/files/16/16-0.txt",
                      "oz": "https://www.gutenberg.org/files/55/55-0.txt",
@@ -39,12 +39,14 @@ BOOKS = {
     },
 
     "complex": {     "shakespeare": "https://www.gutenberg.org/files/100/100-0.txt",
-                     "poe_poems": "https://www.gutenberg.org/files/25343/25343-0.txt",
+                     "poe_poems": "https://www.gutenberg.org/files/10031/10031-0.txt",
                      "marlowe": "https://www.gutenberg.org/files/779/779-0.txt",
                      "ulysses": "https://www.gutenberg.org/files/4300/4300-0.txt",
                      "dubliners": "https://www.gutenberg.org/files/2814/2814-0.txt",
                      "don_quixote": "https://www.gutenberg.org/files/996/996-0.txt"}
 }
+
+# region : Helper Functions
 
 def clean_book(text):
 
@@ -163,22 +165,14 @@ def process_stage(level, books):
             print(f"Skipped")
     
     # Sauvegarder le texte complet
-    text_path = f"data/{level}.txt"
+    text_path = f"./Data/{level}.txt"
     
     with open(text_path, "w", encoding="utf-8") as f:
         f.write(combined_text)
 
     print(f"\nSaved: {text_path} ({len(combined_text):,} chars)")
     
-    # Sauvegarder les dialogues structurés si disponibles
-    if combined_dialogues:
-
-        dialogue_path = f"data/{level}_dialogues.txt"
-
-        with open(dialogue_path, "w", encoding="utf-8") as f:
-            f.write(combined_dialogues)
-
-        print(f"✓ Saved: {dialogue_path} ({len(combined_dialogues):,} chars)")
+# endregion
 
 print("\n" + "="*60)
 print("DOWNLOADING TRAINING DATA FOR CONVERSATIONAL LLM")
@@ -194,7 +188,7 @@ print("="*60)
 print("\nDataset Statistics:")
 for level in BOOKS.keys():
 
-    path = f"data/{level}.txt"
+    path = f"./Data/{level}.txt"
 
     if os.path.exists(path):
         size = os.path.getsize(path)
