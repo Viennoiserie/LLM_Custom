@@ -2,7 +2,7 @@ import os
 import re
 import requests
 
-os.makedirs("./Data", exist_ok=True)
+os.makedirs("../Data", exist_ok=True)
 
 BOOKS = {
 
@@ -165,7 +165,7 @@ def process_stage(level, books):
             print(f"Skipped")
     
     # Sauvegarder le texte complet
-    text_path = f"./Data/{level}.txt"
+    text_path = f"../Data/{level}.txt"
     
     with open(text_path, "w", encoding="utf-8") as f:
         f.write(combined_text)
@@ -188,7 +188,7 @@ print("="*60)
 print("\nDataset Statistics:")
 for level in BOOKS.keys():
 
-    path = f"./Data/{level}.txt"
+    path = f"../Data/{level}.txt"
 
     if os.path.exists(path):
         size = os.path.getsize(path)
