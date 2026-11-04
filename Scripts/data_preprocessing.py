@@ -2,13 +2,18 @@ import os
 import re
 import requests
 
+from pathlib import Path
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
-DATA_DIR = "./Data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "Data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
+HELD_OUT_BOOKS = {"grammar": "english_lessons",
+                  "simple": "alice",
+                  "dialogue": "emma",
+                  "intermediate": "sherlock_holmes",
+                  "complex": "shakespeare"}
 
 BOOKS = {
 
@@ -49,8 +54,7 @@ BOOKS = {
                      "dubliners": "https://www.gutenberg.org/files/2814/2814-0.txt",
                      "don_quixote": "https://www.gutenberg.org/files/996/996-0.txt"}}
 
-
-SYNTHETIC_GRAMMAR = """ GRAMMAR LESSONS : 
+SYNTHETIC_GRAMMAR = """ # GRAMMAR LESSONS
 
 ## Nouns
 A noun is a word that names a person, place, thing, or idea.
@@ -269,12 +273,13 @@ With adverbs:
 
 """
 
-
 # region : Helper Functions
 
 def clean_book(text):
 
-    """Nettoie le texte Gutenberg et normalise la structure."""
+    """Nettoie le texte Gutenberg et normalise la structure"""
+
+    text = strip_gutenberg_headers(text)
 
     replacements = {"—": "--", 
                     "–": "--", 
@@ -295,6 +300,9 @@ def clean_book(text):
     text = re.sub(r" {2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
+    if m := re.search(r"\bCHAPTER\s+[I1VXLC]+\b", text, re.IGNORECASE):
+        text = text[m.start():]
+
     return text.strip()
 
 def download_book(name, url):
@@ -306,9 +314,10 @@ def download_book(name, url):
 
         if r.ok:
             cleaned = clean_book(r.text)
-            # Nettoyer prononciation seulement pour les livres suspects
+    
             if any(x in name for x in ['grammar', 'speak', 'kirkham', 'brown']):
                 cleaned = remove_pronunciation(cleaned)
+                
             return name, cleaned
         
     except Exception as e:
@@ -351,29 +360,93 @@ def remove_pronunciation(text):
     return '\n'.join(clean_lines)
 
 
-def extract_speaker_name(context):
+def is_play_script(text):
 
-    """Détecte le nom du locuteur dans un passage"""
+    """
+    Détecte si un texte est un script de pièce de théâtre:
+    Les pièces ont beaucoup de lignes commençant par des noms en MAJUSCULES.
+    """
 
-    patterns = [r'(\b[A-Z][a-z]+)\s+(?:said|replied|asked|answered|exclaimed|whispered|shouted|murmured)',
-                r'(?:said|replied|asked|answered|exclaimed|whispered|shouted|murmured)\s+(\b[A-Z][a-z]+)',
-                r'(\b[A-Z][a-z]+)\s*[:,]\s*$']
+    character_lines = 0
+    lines = [l.strip() for l in text.split('\n') if l.strip()][:200] 
+
+    for line in lines:
+
+        # Pattern: CARACTERE. ou CARACTERE: ou juste CARACTERE tout seul
+        if re.match(r'^[A-Z][A-Z\s]{2,}[\.:]?\s*$', line):
+            character_lines += 1
+
+        # Pattern: CARACTERE suivi de dialogue
+        elif re.match(r'^[A-Z][A-Z\s]{2,}\.\s+[A-Z]', line):
+            character_lines += 1
     
-    for pat in patterns:
-        if m := re.search(pat, context[-120:]):
-            return m.group(1)
+    # Si plus de 10% des lignes sont des noms de personnages, c'est une pièce
+    return (character_lines / len(lines)) > 0.1 if lines else False
+
+def clean_play_to_narrative(text):
+
+    """
+    Convertit un script de pièce en prose narrative.
+    Retire les noms de personnages et les indications scéniques.
+    """
+
+    cleaned = []
+    lines = text.split('\n')
+
+    for line in lines:
+
+        line = line.strip()
         
-    return None
+        if not line:
+            continue
+        
+        # Ignore les indications scéniques [Enter X], [Exit Y], etc.
+        if re.match(r'^\[.*\]$', line):
+            continue
+        
+        # Ignore les lignes qui sont juste des noms de personnages
+        if re.match(r'^[A-Z][A-Z\s]{2,}[\.:]?\s*$', line):
+            continue
+        
+        # Retirer les noms de personnages au début des lignes
+        line = re.sub(r'^[A-Z][A-Z\s]{2,}[\.:]\s+', '', line)
+        
+        # Retirer les numéros de notes de bas de page [1], [2], etc.
+        line = re.sub(r'\[\d+\]', '', line)
+
+        if line and len(line.split()) > 2:
+            cleaned.append(line)
+    
+    return '\n'.join(cleaned)
 
 def extract_narrative(text, max_segments=300):
 
-    """Extrait des segments narratifs de 3 phrases (version optimisée)"""
-
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    """Extrait la narration (ensemble de phrase quie se suivent)"""
+    
+    # On ignore les abbréviations comme potentiel délimiteurs
+    protected = text
+    protected = re.sub(r'\bDr\.', 'Dr__ABBR__', protected)
+    protected = re.sub(r'\bMr\.', 'Mr__ABBR__', protected)
+    protected = re.sub(r'\bMs\.', 'Ms__ABBR__', protected)
+    protected = re.sub(r'U\.S\.', 'US__ABBR__', protected)
+    protected = re.sub(r'U\.K\.', 'UK__ABBR__', protected)
+    protected = re.sub(r'\bMrs\.', 'Mrs__ABBR__', protected)
+    
+    # On split les phrases par la ponctuation
+    sentences = re.split(r'(?<=[.!?])\s+', protected)
     segments = []
 
     for i in range(0, min(len(sentences) - 3, max_segments * 3), 3):
+
         segment = ' '.join(sentences[i:i+3]).strip()
+        
+        # On restaure les abbréviations pour garder le sens des phrases
+        segment = segment.replace('Dr__ABBR__', 'Dr.')
+        segment = segment.replace('Mr__ABBR__', 'Mr.')
+        segment = segment.replace('Ms__ABBR__', 'Ms.')
+        segment = segment.replace('US__ABBR__', 'U.S.')
+        segment = segment.replace('UK__ABBR__', 'U.K.')
+        segment = segment.replace('Mrs__ABBR__', 'Mrs.')
         
         if len(segment.split()) > 10:
             segments.append(f"{segment} <eos>")
@@ -385,53 +458,40 @@ def extract_narrative(text, max_segments=300):
 
 def extract_dialogues(text, max_dialogues=500):
 
-    """Extrait les dialogues et structure user/assistant (version optimisée)"""
+    """Extract quoted utterances without guessing who is speaking."""
 
-    structured = []
-    speaker = None
-    count = 0
+    utterances = []
+    paragraphs = text.split('\n\n')
 
-    for para in text.split('\n\n'):
+    for para in paragraphs:
 
-        if count >= max_dialogues:
+        if len(utterances) >= max_dialogues:
             break
-
-        for before, quote, after in re.findall(r'([^"]*)"([^"]+)"([^"]*)', para):
-            quote = re.sub(r'\s+', ' ', quote.strip())
-
-            if len(quote.split()) < 3:
-                continue
-
-            spk = extract_speaker_name(before + after)
-
-            if spk and spk != speaker:
-                speaker, count = spk, count + 1
-
-            role = "<user>" if count % 2 == 0 else "<assistant>"
-            structured.append(f"{role} {quote} <eos>")
-
-            if count >= max_dialogues:
-                break
-
-    return "\n".join(structured)
-
-def extract_question_answer(text, max_pairs=200):
-
-    """Extrait les paires question / réponse (version optimisée)"""
-
-    sents = re.split(r'(?<=[.!?])\s+', text)
-    qa = []
-
-    for i, sent in enumerate(sents[:-1]):
         
-        if len(qa) >= max_pairs * 2:
-            break
+        quotes = re.findall(r'"([^"]{10,500})"|“([^”]{10,500})”', para)
 
-        if '?' in sent and len(sent.split()) > 3 and len(sents[i+1].split()) > 3:
-            qa += [f"<user> {sent.strip()} <eos>", f"<assistant> {sents[i+1].strip()} <eos>"]
+        for straight_quote, curly_quote in quotes:
+            utterance = (straight_quote or curly_quote).strip()
 
-    return "\n".join(qa)
+            if len(utterance.split()) > 3:
+                utterances.append(f"{utterance} <eos>")
 
+                if len(utterances) >= max_dialogues:
+                    break
+
+    return "\n".join(utterances)
+
+
+def strip_gutenberg_headers(text: str) -> str:
+
+    text = re.sub(r'(?s).*?(\*\*\*\s*START OF.*?\*\*\*)', '', text)
+    text = re.sub(r'(?s)(\*\*\*\s*END OF.*)', '', text)
+
+    text = re.sub(r'(?s)Information about donations to the Project Gutenberg.*?(?=\n\n|$)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'(?s)Right of Replacement or Refund.*?(?=\n\n|$)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'(?s)Plain Vanilla ASCII.*?(?=\n\n|$)', '', text, flags=re.IGNORECASE)
+
+    return text.strip()
 
 def process_stage(level, books, max_workers=4):
 
@@ -439,55 +499,64 @@ def process_stage(level, books, max_workers=4):
 
     print(f"\n{'='*60}\nPROCESSING STAGE: {level.upper()}\n{'='*60}")
 
-    combined = {"text": [], "dialogues": [], "qa": [], "narrative": []}
+    combined = {"text": [], "dialogues": [], "narrative": []}
+    validation = []
+
     vocab = {}
+    held_out_book = HELD_OUT_BOOKS[level]
 
-    # Ajout de la grammaire "manuelle" au stage 'grammar'
     if level == "grammar":
-
         combined["text"].append(f"\n### START SYNTHETIC_GRAMMAR ###\n{SYNTHETIC_GRAMMAR}\n### END SYNTHETIC_GRAMMAR ###\n")
-        print(f"  synthetic_grammar ({len(SYNTHETIC_GRAMMAR):,} chars)")
 
+        print(f"  synthetic_grammar ({len(SYNTHETIC_GRAMMAR):,} chars)")
         vocab["synthetic_grammar"] = analyze_vocabulary(SYNTHETIC_GRAMMAR)
 
     # Téléchargements
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    for idx, (name, url) in enumerate(books.items(), 1):
 
-        futures = [ex.submit(download_book, n, u) for n, u in books.items()]
+        name_result, text = download_book(name, url)
 
-        for f in as_completed(futures):
-            name, text = f.result()
+        if not text:
+            print(f"  Skipped {name}")
+            continue
 
-            if not text:
-                print(f"  Skipped {name}")
-                continue
+        print(f"  {name} ({len(text):,} chars)")
 
-            print(f"  {name} ({len(text):,} chars)")
+        vocab[name] = analyze_vocabulary(text)
 
-            vocab[name] = analyze_vocabulary(text)
-            combined["text"].append(f"\n### START {name} ###\n{text}\n### END {name} ###\n")
+        if name == held_out_book:
+            validation.append(f"\n### HELD-OUT {name} ###\n{text}\n### END HELD-OUT {name} ###\n")
+            continue
 
-            if level != "grammar":
-                if d := extract_dialogues(text, max_dialogues=500):
-                    combined["dialogues"].append(d)
+        combined["text"].append(f"\n### START {name} ###\n{text}\n### END {name} ###\n")
 
-            if level in ("grammar", "dialogue", "intermediate"):
-                if qa := extract_question_answer(text, max_pairs=200):
-                    combined["qa"].append(qa)
+        # Dialogues
+        if level in ("dialogue", "intermediate"):
+            if d := extract_dialogues(text, max_dialogues=300):
 
-            if level in ("simple", "intermediate", "complex"):
-                if n := extract_narrative(text, max_segments=300):
-                    combined["narrative"].append(n)
+                print(f"    -> Extracted {len(d.split(chr(10)))} dialogue lines")
+                combined["dialogues"].append(d)
 
-    # Enregistrements
+        # Narrative
+        if level in ("simple", "intermediate", "complex"):
+            if n := extract_narrative(text, max_segments=250):
+
+                print(f"    -> Extracted {len(n.split(chr(10)+chr(10)))} narrative segments")
+                combined["narrative"].append(n)
+
     outputs = {}
 
-    for key, content in combined.items():
+    if not validation:
+        raise RuntimeError(f"Held-out book '{held_out_book}' was not downloaded for stage '{level}'.")
 
+    combined["validation"] = validation
+
+    for key, content in combined.items():
         if not content:
             continue
 
-        path = os.path.join(DATA_DIR, f"{level}_{key}.txt") if key != "text" else os.path.join(DATA_DIR, f"{level}.txt")
+        filename = f"{level}_{key}.txt" if key not in ("text", "validation") else (f"{level}.txt" if key == "text" else f"{level}_validation.txt")
+        path = os.path.join(DATA_DIR, filename)
         
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n\n".join(content))
@@ -500,13 +569,13 @@ def process_stage(level, books, max_workers=4):
 
     print("\n  Vocabulary stats:")
     for name, stats in vocab.items():
+        
         print(f"    {name:25s}: {stats['unique_words']:>7,} uniq / {stats['total_words']:>8,} total "
               f"(richness={stats['richness']:.3f})")
 
     return outputs
 
 # endregion
-
 
 if __name__ == "__main__":
 

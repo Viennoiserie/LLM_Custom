@@ -1,34 +1,36 @@
 # Conversational Language Model Pipeline
 
-This repository implements a complete pipeline for training and deploying a transformer-based conversational language model using classical English literature, with progressive curriculum learning and transfer learning between stages.
+This repository is a from-scratch autoregressive language-modeling experiment using classical English literature, with progressive curriculum learning and transfer learning between stages. The current corpus does not support claims of reliable assistant-style conversation.
 
 ---
 
 ## 📁 Project Structure
 
-- **`data_preprocessing.py`** 
+- **`Scripts/data_preprocessing.py`**
 
-  Downloads and processes public domain texts from Project Gutenberg, organizing them into 5 curriculum stages with special emphasis on conversational content. Extracts dialogues and structures them for optimal conversational learning.
+  Downloads and processes public-domain texts from Project Gutenberg into five stages. One complete book per stage is held out for validation. Quoted passages are retained as unlabeled text; the preprocessor does not infer user/assistant roles from nearby sentences.
 
 - **`model_train.ipynb`** 
 
   Handles the complete training pipeline:
 
-  - Single unified BPE tokenizer training across all datasets
+  - Single unified BPE tokenizer trained on training data only
   - Transformer model with causal masking
-  - Dataset preparation with special tokens for conversation
+  - Dataset preparation and whole-book validation
   - Sequential training with transfer learning between stages
-  - Early stopping, checkpointing, and learning rate scheduling
+  - Early stopping and best-checkpoint selection using validation loss
 
 - **`model_use.ipynb`**
 
-  Interactive inference interface featuring:
+  Interactive prompted-text-generation interface featuring:
 
   - Model selection from trained checkpoints
-  - Conversation history management
+  - Rolling prompt history (up to the model context window)
   - Top-k & top-p sampling for diverse generation
-  - Special tokens handling (`<user>`, `<assistant>`, `<eos>`)
-  - Context-aware response generation
+  - A consistent `<user>` / `<assistant>` prompt template
+  - Model-specific tokenizer loading
+
+  **Limitation:** the Gutenberg corpus does not provide reliable speaker labels or authentic assistant responses. The interface maintains and formats context, but useful conversational behavior requires a separate, carefully labeled conversation dataset.
 
 ---
 
@@ -49,9 +51,9 @@ Books are organized into 5 progressive difficulty stages for optimal learning:
 
 3. **Dialogue** (Conversational Focus) 
    - Dialogue-rich novels
-   - Natural conversation patterns
+   - Quoted speech from dialogue-rich novels
    - Emma, Little Women, Tom Sawyer, Huckleberry Finn, etc.
-   - ~6 books with extracted dialogue structures
+   - ~6 books; quoted utterances are unlabelled
 
 4. **Intermediate** (Consolidation)
    - Classic novels
@@ -70,7 +72,7 @@ Each stage builds upon the previous one through **transfer learning**, with the 
 
 ## 🧠 Model Architecture
 
-Enhanced transformer architecture optimized for conversational AI:
+Transformer architecture for autoregressive text generation:
 
 - **Token & Position Embeddings** (512 dimensions)
 - **12 Transformer Encoder Layers** with:
@@ -102,21 +104,21 @@ Enhanced transformer architecture optimized for conversational AI:
 <unk>        # Unknown tokens
 <bos>        # Begin of sequence
 <eos>        # End of sequence / paragraph separator
-<user>       # User message marker
-<assistant>  # Model response marker
+<user>       # Reserved prompt marker; not learned as a real role in Gutenberg data
+<assistant>  # Reserved prompt marker; not learned as a real role in Gutenberg data
 ```
 
 ---
 
 ## 🔄 Training Pipeline
 
-### 1. Unified Tokenizer Training
+### 1. Training-only Tokenizer
 
-A **single BPE tokenizer** is trained on all datasets combined:
+A **single BPE tokenizer** is trained on training files only (not the held-out books):
 - Ensures vocabulary consistency across all stages
 - Enables seamless transfer learning
-- Includes 6 special tokens for conversation structure
-- Saved as `tokenizer_30000.json` for inference
+- Includes six reserved tokens; user/assistant roles are not present in the literary training data
+- Saved as `Models/Tokenizer/tokenizer_30000_book_split_v2.json` for inference
 
 ### 2. Sequential Stage Training
 
@@ -133,8 +135,8 @@ Stage 2: Simple
       ↓
 Stage 3: Dialogue ⭐
 ├─ Load Simple weights (LR = 5e-5)
-├─ Learn conversational patterns
-└─ Core objective achieved
+├─ Continue language modeling on books and unlabeled quotes
+└─ Does not learn verified user/assistant roles
       ↓
 Stage 4: Intermediate
 ├─ Load Dialogue weights (LR = 5e-5)
@@ -144,7 +146,7 @@ Stage 4: Intermediate
 Stage 5: Complex
 ├─ Load Intermediate weights (LR = 5e-5)
 ├─ Refine with literary style
-└─ Final conversational model
+└─ Final literature-trained text model
 ```
 
 ### 3. Training Features
@@ -153,7 +155,7 @@ Stage 5: Complex
 - **Early Stopping**: Halts training after 5 epochs without improvement
 - **Gradient Clipping**: Prevents exploding gradients (max norm = 1.0)
 - **Learning Rate Scheduling**: Linear decay with 500-step warmup
-- **Checkpointing**: Saves model every 10 epochs + best model per stage
+- **Checkpoint selection**: Saves the best model per stage by held-out validation loss
 - **Logging**: Comprehensive training logs for analysis
 
 ---
@@ -162,31 +164,34 @@ Stage 5: Complex
 
 ```
 project/
-├── data/
+├── Data/
 │   ├── grammar.txt
+│   ├── grammar_validation.txt
 │   ├── simple.txt
+│   ├── simple_validation.txt
 │   ├── dialogue.txt
-│   ├── dialogue_dialogues.txt      # Extracted conversations
+│   ├── dialogue_validation.txt
+│   ├── dialogue_dialogues.txt      # Unlabeled quoted utterances
 │   ├── intermediate.txt
-│   ├── intermediate_dialogues.txt  # Extracted conversations
-│   └── complex.txt
+│   ├── intermediate_validation.txt
+│   ├── intermediate_dialogues.txt  # Unlabeled quoted utterances
+│   ├── complex.txt
+│   └── complex_validation.txt
 │
 ├── Models/
 │   ├── Tokenizer/
-│   │   └── tokenizer_30000.json    # Unified tokenizer
+│   │   └── tokenizer_30000_book_split_v2.json
 │   │
-│   ├── grammar_epoch_15.pth
-│   ├── grammar_epoch_15_settings.json
-│   ├── simple_epoch_8.pth
-│   ├── simple_epoch_8_settings.json
-│   ├── dialogue_epoch_12.pth       # Best conversational model
-│   ├── dialogue_epoch_12_settings.json
+│   ├── book_split_v2/
+│   │   ├── grammar_best.pth
+│   │   ├── grammar_best_settings.json
 │   └── ...
 │
-├── data_preprocessing.py
-├── training.py
-├── inference.py
-├── training.log
+├── Scripts/
+│   ├── data_preprocessing.py
+│   ├── model_train.ipynb
+│   ├── model_use.ipynb
+│   └── Logs/training.log
 └── README.md
 ```
 
@@ -196,52 +201,35 @@ project/
 
 ### 1. Data Preprocessing
 
-```bash
-python data_preprocessing.py
+```powershell
+python Scripts\data_preprocessing.py
 ```
 
 **What it does:**
 - Downloads books from Project Gutenberg
-- Cleans and structures text (preserves dialogues)
-- Extracts conversations from dialogue-rich stages
-- Saves organized datasets to `data/` directory
+- Cleans text and writes stage datasets under `Data\`
+- Holds out one complete book per stage for validation
+- Extracts quoted utterances without inventing speaker labels
 - Displays statistics (file sizes, word counts)
 
 ---
 
 ### 2. Model Training
 
-```bash
-python training.py
-```
-
-**What it does:**
-- Trains/loads unified tokenizer (runs once)
-- Trains model sequentially through all 5 stages
-- Applies transfer learning between stages
-- Saves best model from each stage
-- Logs all training metrics
+Open and run `Scripts/model_train.ipynb` from top to bottom. It trains/loads the versioned tokenizer, trains all five stages, selects each best checkpoint by held-out validation loss, and stops after five consecutive epochs without improvement.
 
 ---
 
 ### 3. Interactive Inference
 
-```bash
-python inference.py
-```
-
-**What it does:**
-- Loads tokenizer and displays available models
-- User selects trained model
-- Enters conversation mode with context management
-- Generates responses using the trained model
+Open and run `Scripts/model_use.ipynb` from top to bottom. It lists available checkpoints, loads the tokenizer recorded for the selected model, and generates from a rolling prompt. The model context window limits retained history.
 
 ---
 
 ## 🗣️ Interactive Features
 
-### Conversation Management
-- **Context Retention**: Maintains conversation history up to ~150 tokens
+### Prompt Management
+- **Context Retention**: Maintains recent turns up to the model's configured token window
 - **Clear Command**: Reset context with `clear`
 - **Graceful Exit**: Use `quit` or `exit` to leave
 
@@ -249,7 +237,7 @@ python inference.py
 - **Temperature** (0.8): Controls randomness (lower = more focused)
 - **Top-k** (40): Considers top 40 most likely tokens
 - **Top-p** (0.9): Nucleus sampling for diversity
-- **Max Length** (50 tokens): Response length limit
+- **Max Length** (80 tokens): Generation limit
 - **Stop Tokens**: Automatically stops at `<eos>` or `<pad>`
 
 ---
@@ -277,9 +265,9 @@ pip install requests>=2.31.0
 
 ### Why Curriculum Learning ?
 
-1. **Progressive Complexity**: Models learn better with gradual difficulty increase
+1. **Progressive Complexity**: Training follows a gradual difficulty progression
 2. **Transfer Learning**: Each stage benefits from previous knowledge
-3. **Specialization**: Dialogue stage focuses on conversational patterns
+3. **Quoted Text**: The dialogue stage adds quoted utterances, without claiming their speakers are known
 4. **Robustness**: Exposure to diverse text styles creates versatile model
 
 ### Why This Architecture ?
@@ -304,9 +292,11 @@ All texts are from [Project Gutenberg](https://www.gutenberg.org) and are in the
 
 ---
 
+The `<user>` / `<assistant>` template and rolling context make inference inputs consistent, but they do not make a literature-trained model conversational. Add real, accurately speaker-labeled conversations before treating its output as assistant responses.
+
 ## 🚀 Future Improvements
 
-- [ ] Add validation set for better early stopping
+- [ ] Add a verified, speaker-labeled conversation dataset and fine-tune on it
 - [ ] Implement beam search for more coherent long responses
 - [ ] Fine-tune on modern conversational datasets
 - [ ] Add response quality metrics

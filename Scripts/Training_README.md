@@ -1,5 +1,7 @@
 # I - Configuration du Modèle
 
+> **Version actuelle :** le code exécutable est dans `model_train.ipynb`, `model_use.ipynb` et `data_preprocessing.py`. Les anciens exemples de code plus bas sont explicatifs et peuvent représenter une version antérieure. Le pipeline actuel utilise une validation par livre, n'invente pas de paires question/réponse, et sauvegarde les modèles dans `Models/book_split_v2/`.
+
 ## Architecture
 
 Transformer avec :
@@ -15,7 +17,7 @@ Transformer avec :
 ## Vocabulaire
 
 - **30 000 tokens** appris par tokenizer BPE
-- Tokens spéciaux : `<user>`, `<assistant>`, `<eos>`
+- Tokens réservés : `<user>`, `<assistant>`, `<eos>`. Le corpus littéraire ne contient pas de rôles conversationnels vérifiés.
 
 ---
 
@@ -23,6 +25,7 @@ Transformer avec :
 
 - **Batch size :** 16 séquences
 - **Epochs :** Max 100 (avec early stopping, patience=5)
+- **Sélection du modèle :** perte de validation sur un livre entier non utilisé à l'entraînement
 - **Learning rate :** 
   - Initial : `5e-4` (0.0005)
   - Fine-tuning : `5e-5` (0.00005)
@@ -36,7 +39,7 @@ Transformer avec :
 | Warmup | 500 étapes |
 | Gradient clipping | 1.0 |
 | Optimizer | AdamW + scheduler linéaire |
-| Checkpoints | Tous les 10 epochs |
+| Sauvegarde | Meilleur checkpoint selon la perte de validation |
 
 ---
 
@@ -44,10 +47,11 @@ Transformer avec :
 
 Progression en 5 stages avec transfer learning :
 
-*simple → grammar → complex → dialogue → intermediate*
+`grammar` → `simple` → `dialogue` → `intermediate` → `complex`
 
+Le prétraitement réserve un livre complet par stage pour la validation : `english_lessons`, `alice`, `emma`, `sherlock_holmes` et `shakespeare`. Ces textes ne sont ni utilisés pour entraîner le modèle, ni inclus dans l'entraînement du tokenizer. La perte de validation est mesurée à chaque epoch; le meilleur checkpoint est sauvegardé et l'entraînement s'arrête après cinq epochs sans amélioration.
 
-> Ordre recommandé : `grammar` → `simple` → `dialogue` → `intermediate` → `complex`
+Les anciennes données `*_qa.txt` ne sont plus générées ni utilisées : la proximité d'une phrase interrogative et d'une phrase suivante ne permet pas de déduire une réponse ni le rôle des locuteurs. Les extraits cités sont conservés sans étiquettes `user` / `assistant`. Il faut un corpus de conversations annoté correctement pour entraîner ces rôles.
 
 ---
 
@@ -55,8 +59,8 @@ Progression en 5 stages avec transfer learning :
 
 - **Device :** GPU CUDA (si disponible) ou CPU
 - **Sauvegarde :**
-  - Modèles : `../Models/`
-  - Tokenizer : `../Models/Tokenizer/`
+  - Modèles : `Models/book_split_v2/`
+  - Tokenizer : `Models/Tokenizer/tokenizer_30000_book_split_v2.json`
 
 ---
 
@@ -118,6 +122,8 @@ self.tokens = [5421, 1923, 2, 1054, 812, 6543]
 Equivalent : Hello world `<eos>` How  are  you
 
 ---
+
+Les fichiers de validation sont créés à part, par livre, et ne sont jamais fusionnés dans le corpus du tokenizer ni dans les lots d'entraînement.
 
 ## Étape 4 : Stocker la longueur de séquence
 
@@ -357,7 +363,7 @@ tokenizer.save(tokenizer_path)
 print(f"Tokenizer saved to {tokenizer_path}")
 ```
 
-Sauvegarde dans `../Models/Tokenizer/tokenizer_30000.json` :
+Sauvegarde dans `Models/Tokenizer/tokenizer_30000_book_split_v2.json` :
 
 - Vocabulaire complet (30 000 tokens)
 - Règles de fusion BPE
