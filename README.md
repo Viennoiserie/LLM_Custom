@@ -19,6 +19,8 @@ This repository is a from-scratch autoregressive language-modeling experiment us
   - Dataset preparation and whole-book validation
   - Sequential training with transfer learning between stages
   - Early stopping and best-checkpoint selection using validation loss
+  - Saves checkpoints under `Models/literature_v2/` and the tokenizer as
+    `Models/Tokenizer/tokenizer_30000_literature_v2.json`
 
 - **`model_use.ipynb`**
 
@@ -118,7 +120,7 @@ A **single BPE tokenizer** is trained on training files only (not the held-out b
 - Ensures vocabulary consistency across all stages
 - Enables seamless transfer learning
 - Includes six reserved tokens; user/assistant roles are not present in the literary training data
-- Saved as `Models/Tokenizer/tokenizer_30000_book_split_v2.json` for inference
+- Saved as `Models/Tokenizer/tokenizer_30000_literature_v2.json` for inference
 
 ### 2. Sequential Stage Training
 
@@ -180,9 +182,9 @@ project/
 │
 ├── Models/
 │   ├── Tokenizer/
-│   │   └── tokenizer_30000_book_split_v2.json
+│   │   └── tokenizer_30000_literature_v2.json
 │   │
-│   ├── book_split_v2/
+│   ├── literature_v2/
 │   │   ├── grammar_best.pth
 │   │   ├── grammar_best_settings.json
 │   └── ...
@@ -255,11 +257,10 @@ pip install requests>=2.31.0
 
 **System Requirements:**
 - Python 3.8+
-- CUDA-capable GPU recommended (16GB+ VRAM for training)
+- CUDA-capable GPU recommended; the current model settings and batch size were tested on a 6GB RTX 3060 Laptop GPU
 - ~10GB disk space for datasets and models
 
 ---
-
 
 ## 🎯 Design Choices
 

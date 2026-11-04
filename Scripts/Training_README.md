@@ -1,6 +1,6 @@
 # I - Configuration du Modèle
 
-> **Version actuelle :** le code exécutable est dans `model_train.ipynb`, `model_use.ipynb` et `data_preprocessing.py`. Les anciens exemples de code plus bas sont explicatifs et peuvent représenter une version antérieure. Le pipeline actuel utilise une validation par livre, n'invente pas de paires question/réponse, et sauvegarde les modèles dans `Models/book_split_v2/`.
+> **Version actuelle :** le code exécutable est dans `model_train.ipynb`, `model_use.ipynb` et `data_preprocessing.py`. Les anciens exemples de code plus bas sont explicatifs et peuvent représenter une version antérieure. Le pipeline actuel utilise une validation par livre, n'invente pas de paires question/réponse, et sauvegarde les modèles dans `Models/literature_v2/`.
 
 ## Architecture
 
@@ -59,8 +59,8 @@ Les anciennes données `*_qa.txt` ne sont plus générées ni utilisées : la pr
 
 - **Device :** GPU CUDA (si disponible) ou CPU
 - **Sauvegarde :**
-  - Modèles : `Models/book_split_v2/`
-  - Tokenizer : `Models/Tokenizer/tokenizer_30000_book_split_v2.json`
+  - Modèles : `Models/literature_v2/`
+  - Tokenizer : `Models/Tokenizer/tokenizer_30000_literature_v2.json`
 
 ---
 
@@ -363,7 +363,7 @@ tokenizer.save(tokenizer_path)
 print(f"Tokenizer saved to {tokenizer_path}")
 ```
 
-Sauvegarde dans `Models/Tokenizer/tokenizer_30000_book_split_v2.json` :
+Sauvegarde dans `Models/Tokenizer/tokenizer_30000_literature_v2.json` :
 
 - Vocabulaire complet (30 000 tokens)
 - Règles de fusion BPE

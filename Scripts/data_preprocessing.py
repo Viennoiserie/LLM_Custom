@@ -277,7 +277,10 @@ With adverbs:
 
 def clean_book(text):
 
-    """Nettoie le texte Gutenberg et normalise la structure"""
+    """
+    Nettoie le texte Gutenberg et normalise la structure
+    
+    """
 
     text = strip_gutenberg_headers(text)
 
@@ -307,7 +310,10 @@ def clean_book(text):
 
 def download_book(name, url):
 
-    """Télécharge et nettoie un livre"""
+    """
+    Télécharge et nettoie un livre
+    
+    """
 
     try:
         r = requests.get(url, timeout=30)
@@ -421,7 +427,10 @@ def clean_play_to_narrative(text):
 
 def extract_narrative(text, max_segments=300):
 
-    """Extrait la narration (ensemble de phrase quie se suivent)"""
+    """
+    Extrait la narration (ensemble de phrase quie se suivent)
+    
+    """
     
     # On ignore les abbréviations comme potentiel délimiteurs
     protected = text
@@ -458,7 +467,10 @@ def extract_narrative(text, max_segments=300):
 
 def extract_dialogues(text, max_dialogues=500):
 
-    """Extract quoted utterances without guessing who is speaking."""
+    """
+    Extract quoted utterances without guessing who is speaking.
+    
+    """
 
     utterances = []
     paragraphs = text.split('\n\n')
@@ -493,17 +505,19 @@ def strip_gutenberg_headers(text: str) -> str:
 
     return text.strip()
 
-def process_stage(level, books, max_workers=4):
+def process_stage(level, books, max_workers=5):
 
-    """Télécharge et traite tous les livres d'un niveau"""
+    """
+    Télécharge et traite tous les livres d'un niveau
+    
+    """
 
     print(f"\n{'='*60}\nPROCESSING STAGE: {level.upper()}\n{'='*60}")
 
-    combined = {"text": [], "dialogues": [], "narrative": []}
-    validation = []
-
     vocab = {}
+    validation = []
     held_out_book = HELD_OUT_BOOKS[level]
+    combined = {"text": [], "dialogues": [], "narrative": []}
 
     if level == "grammar":
         combined["text"].append(f"\n### START SYNTHETIC_GRAMMAR ###\n{SYNTHETIC_GRAMMAR}\n### END SYNTHETIC_GRAMMAR ###\n")
@@ -511,34 +525,44 @@ def process_stage(level, books, max_workers=4):
         print(f"  synthetic_grammar ({len(SYNTHETIC_GRAMMAR):,} chars)")
         vocab["synthetic_grammar"] = analyze_vocabulary(SYNTHETIC_GRAMMAR)
 
-    # Téléchargements
+    downloaded = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(download_book, name, url): name for name, url in books.items()}
+
+        for future in as_completed(futures):
+
+            name, text = future.result()
+            downloaded[name] = text
+
     for idx, (name, url) in enumerate(books.items(), 1):
 
-        name_result, text = download_book(name, url)
+        text = downloaded[name]
 
         if not text:
+
             print(f"  Skipped {name}")
             continue
 
         print(f"  {name} ({len(text):,} chars)")
-
         vocab[name] = analyze_vocabulary(text)
 
         if name == held_out_book:
+
             validation.append(f"\n### HELD-OUT {name} ###\n{text}\n### END HELD-OUT {name} ###\n")
             continue
 
         combined["text"].append(f"\n### START {name} ###\n{text}\n### END {name} ###\n")
 
-        # Dialogues
         if level in ("dialogue", "intermediate"):
+
             if d := extract_dialogues(text, max_dialogues=300):
 
                 print(f"    -> Extracted {len(d.split(chr(10)))} dialogue lines")
                 combined["dialogues"].append(d)
 
-        # Narrative
         if level in ("simple", "intermediate", "complex"):
+            
             if n := extract_narrative(text, max_segments=250):
 
                 print(f"    -> Extracted {len(n.split(chr(10)+chr(10)))} narrative segments")
@@ -552,6 +576,7 @@ def process_stage(level, books, max_workers=4):
     combined["validation"] = validation
 
     for key, content in combined.items():
+        
         if not content:
             continue
 
@@ -564,14 +589,14 @@ def process_stage(level, books, max_workers=4):
         outputs[key] = path
 
     print("\n  Saved files:")
+    
     for k, v in outputs.items():
         print(f"    - {os.path.basename(v)} ({os.path.getsize(v):,} bytes)")
 
     print("\n  Vocabulary stats:")
+    
     for name, stats in vocab.items():
-        
-        print(f"    {name:25s}: {stats['unique_words']:>7,} uniq / {stats['total_words']:>8,} total "
-              f"(richness={stats['richness']:.3f})")
+        print(f"    {name:25s}: {stats['unique_words']:>7,} uniq / {stats['total_words']:>8,} total (richness={stats['richness']:.3f})")
 
     return outputs
 
@@ -583,7 +608,7 @@ if __name__ == "__main__":
     print("DOWNLOADING TRAINING DATA FOR CONVERSATIONAL LLM")
     print("="*60)
 
-    all_outputs = {lvl: process_stage(lvl, bks) for lvl, bks in BOOKS.items()}
+    all_outputs = {lvl: process_stage(lvl, bks, max_workers=5) for lvl, bks in BOOKS.items()}
 
     print("\n" + "="*60)
     print("ALL DOWNLOADS COMPLETE")
